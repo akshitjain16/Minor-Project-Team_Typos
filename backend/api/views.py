@@ -228,23 +228,17 @@ permission_columns = [
 
 class PredictMalware(APIView):
     def post(self, request):
-        # Load the model
         model = joblib.load('xgboost_model.joblib')
-        
-        # Get the input data from the request
+
         data = request.data.get('features')
-        
-        # Check if data is valid
+
         if data is None or not isinstance(data, list) or len(data) != 173:
             return Response({'error': 'Invalid input data. Expected a list of 173 features.'}, status=400)
-            
-        # Create a pandas DataFrame from the input data
+
         df = pd.DataFrame([data])
-        
-        # Make prediction
+
         prediction = model.predict(df)
-        
-        # Return the prediction
+
         return Response({'prediction': prediction[0]})
 
 class UploadApk(APIView):
@@ -256,25 +250,18 @@ class UploadApk(APIView):
 
         file_obj = request.data['file']
 
-        # Save the uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=".apk") as temp_file:
             for chunk in file_obj.chunks():
                 temp_file.write(chunk)
             temp_file_path = temp_file.name
 
         try:
-            # Use androguard to parse the APK
             apk = APK(temp_file_path)
             extracted_permissions = apk.get_permissions()
 
-            # The extracted permissions from androguard are typically in the format 'android.permission.INTERNET'.
-            # Our model expects a 173-feature vector based on descriptive permission names.
-            # A mapping is needed to convert these raw permissions into the model's input format.
-            # For now, we return the raw permissions. The client should handle the mapping.
             return Response({'extracted_permissions': extracted_permissions}, status=200)
 
         except Exception as e:
             return Response({'error': f'Error processing APK: {str(e)}'}, status=500)
         finally:
-            # Clean up the temporary file
             os.remove(temp_file_path)
