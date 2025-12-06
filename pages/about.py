@@ -13,14 +13,14 @@ This Streamlit app uses:
 It predicts whether an Android app is **Benign** or **Malicious** based on its permission set.
 
 ### 🔧 ML Pipeline
-1. Missing value imputation  
+1. Missing value imputation  git
 2. Permission feature extraction  
 3. Standard Scaling  
 4. PCA (100 components → binarized → top 10 features)  
 5. Classification using XGBoost  
 
 ### 👨‍💻 Author
-Built by: *Your Name*
+Built by: Aritree Ray, Akshit Jain, Kanak Chouhan, Prateek Dave
 
 ### 📚 Dataset Source
 Android Permissions + App Metadata Dataset.
