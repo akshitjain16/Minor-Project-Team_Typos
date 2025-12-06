@@ -1,0 +1,280 @@
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.parsers import FileUploadParser
+import joblib
+import pandas as pd
+import os
+import tempfile
+from androguard.core.bytecodes.apk import APK
+
+permission_columns = [
+    'Default : Access DRM content. (S)',
+    'Default : Access Email provider data (S)',
+    'Default : Access all system downloads (S)',
+    'Default : Access download manager. (S)',
+    'Default : Advanced download manager functions. (S)',
+    'Default : Audio File Access (S)',
+    'Default : Install DRM content. (S)',
+    'Default : Modify Google service configuration (S)',
+    'Default : Modify Google settings (S)',
+    'Default : Read Google settings (S)',
+    'Default : Read installed applications (S)',
+    'Default : Read sensitive log data (S)',
+    'Default : Send download notifications. (S)',
+    'Default : Uninstall shortcuts (S)',
+    'Default : Write Google settings (S)',
+    'Default : Write access to the APN settings (S)',
+    'Development tools : enable application debugging (D)',
+    'Development tools : enable or disable app components (D)',
+    'Development tools : limit number of running processes (D)',
+    'Development tools : retrieve running apps (S)',
+    'Hardware controls : change your audio settings (S)',
+    'Hardware controls : change your UI settings (S)',
+    'Hardware controls : control vibrator (S)',
+    'Hardware controls : control Wi-Fi (S)',
+    'Hardware controls : take pictures and videos (D)',
+    'Hardware controls : record audio (D)',
+    'Hardware controls : change screen orientation (S)',
+    'Hardware controls : test hardware (S)',
+    'Hardware controls : turn screen on and off (S)',
+    'Hardware controls : access SurfaceFlinger (S)',
+    'Hardware controls : control flashlight (S)',
+    'Hardware controls : control location update notifications (S)',
+    'Hardware controls : control media button (S)',
+    'Hardware controls : control secondary displays (S)',
+    'Hardware controls : disable keylock (S)',
+    'Hardware controls : force touch calibration (S)',
+    'Hardware controls : interact with a device admin (S)',
+    'Hardware controls : manage USB accessories (S)',
+    'Hardware controls : mock location sources for testing (D)',
+    'Hardware controls : read Home settings and shortcuts (S)',
+    'Hardware controls : read system settings (S)',
+    'Hardware controls : send package removed broadcast (S)',
+    'Hardware controls : set preferred network type (S)',
+    'Hardware controls : set wallpaper (S)',
+    'Hardware controls : set wallpaper hints (S)',
+    'Hardware controls : write Home settings and shortcuts (S)',
+    'Hardware controls : write system settings (D)',
+    'Network communication : create Bluetooth connections (S)',
+    'Network communication : full Internet access (D)',
+    'Network communication : view Wi-Fi state (S)',
+    'Network communication : view network state (S)',
+    'Network communication : connect and disconnect from Wi-Fi (S)',
+    'Network communication : download files without notification (S)',
+    'Network communication : Google Play billing service (S)',
+    'Network communication : receive data from Internet (S)',
+    'Network communication : send sticky broadcast (S)',
+    'Network communication : change network connectivity (S)',
+    'Network communication : change WiMAX state (S)',
+    'Network communication : control Near Field Communication (S)',
+    'Network communication : control VPN (S)',
+    'Network communication : discover known accounts (S)',
+    'Network communication : full network access (S)',
+    'Network communication : Google service configuration (S)',
+    'Network communication : modify Wi-Fi state (S)',
+    'Network communication : read Google service configuration (S)',
+    'Network communication : receive MMS messages (S)',
+    'Network communication : send SMS messages (D)',
+    'Network communication : view WiMAX state (S)',
+    'Network communication : write APN settings (S)',
+    'Phone calls : intercept outgoing calls (D)',
+    'Phone calls : read phone state and identity (D)',
+    'Phone calls : redirect outgoing calls (D)',
+    'Phone calls : modify phone state (D)',
+    'Phone calls : read call log (D)',
+    'Phone calls : write call log (D)',
+    'Phone calls : make calls without your intervention (D)',
+    'Phone calls : directly call phone numbers (D)',
+    'Phone calls : read voicemail (D)',
+    'Phone calls : write voicemail (D)',
+    'Phone calls : receive SMS (D)',
+    'Phone calls : receive WAP (D)',
+    'Phone calls : send SMS (D)',
+    'Phone calls : read SMS or MMS (D)',
+    'Phone calls : write SMS or MMS (D)',
+    'Phone calls : receive emergency broadcast (S)',
+    'Phone calls : read phone numbers (S)',
+    'Phone calls : modify phone numbers (S)',
+    'Phone calls : read phone book (S)',
+    'Phone calls : write phone book (S)',
+    'Phone calls : read phone book entries (S)',
+    'Phone calls : write phone book entries (S)',
+    'Phone calls : read phone book contacts (S)',
+    'Phone calls : write phone book contacts (S)',
+    'Phone calls : read phone book groups (S)',
+    'Phone calls : write phone book groups (S)',
+    'Phone calls : read phone book favorites (S)',
+    'Phone calls : write phone book favorites (S)',
+    'Phone calls : read phone book history (S)',
+    'Phone calls : write phone book history (S)',
+    'Phone calls : read phone book call log (S)',
+    'Phone calls : write phone book call log (S)',
+    'Phone calls : read phone book voicemail (S)',
+    'Phone calls : write phone book voicemail (S)',
+    'Phone calls : read phone book messages (S)',
+    'Phone calls : write phone book messages (S)',
+    'Phone calls : read phone book settings (S)',
+    'Phone calls : write phone book settings (S)',
+    'Phone calls : read phone book status (S)',
+    'Phone calls : write phone book status (S)',
+    'Phone calls : read phone book profile (S)',
+    'Phone calls : write phone book profile (S)',
+    'Phone calls : read phone book accounts (S)',
+    'Phone calls : write phone book accounts (S)',
+    'Phone calls : read phone book contacts group (S)',
+    'Phone calls : write phone book contacts group (S)',
+    'Phone calls : read phone book contacts favorites (S)',
+    'Phone calls : write phone book contacts favorites (S)',
+    'Phone calls : read phone book contacts history (S)',
+    'Phone calls : write phone book contacts history (S)',
+    'Phone calls : read phone book contacts call log (S)',
+    'Phone calls : write phone book contacts call log (S)',
+    'Phone calls : read phone book contacts voicemail (S)',
+    'Phone calls : write phone book contacts voicemail (S)',
+    'Phone calls : read phone book contacts messages (S)',
+    'Phone calls : write phone book contacts messages (S)',
+    'Phone calls : read phone book contacts settings (S)',
+    'Phone calls : write phone book contacts settings (S)',
+    'Phone calls : read phone book contacts status (S)',
+    'Phone calls : write phone book contacts status (S)',
+    'Phone calls : read phone book contacts profile (S)',
+    'Phone calls : write phone book contacts profile (S)',
+    'Phone calls : read phone book contacts accounts (S)',
+    'Phone calls : write phone book contacts accounts (S)',
+    'Storage : modify/delete USB storage contents (D)',
+    'Storage : modify/delete SD card contents (D)',
+    'Storage : read USB storage contents (S)',
+    'Storage : read SD card contents (S)',
+    'Storage : mount and unmount filesystems (S)',
+    'Storage : format external storage (S)',
+    'Storage : write to external storage (S)',
+    'Storage : read external storage (S)',
+    'Storage : manage document storage (S)',
+    'Storage : access all files (S)',
+    'Storage : delete all files (S)',
+    "Storage : delete other apps' data (S)",
+    'Storage : erase SD card (S)',
+    'Storage : full filesystem access (S)',
+    'Storage : read media storage (S)',
+    'Storage : write media storage (S)',
+    'Storage : read phone storage (S)',
+    'Storage : write phone storage (S)',
+    'Storage : read SMS storage (S)',
+    'Storage : write SMS storage (S)',
+    'Storage : read MMS storage (S)',
+    'Storage : write MMS storage (S)',
+    'Storage : read contacts storage (S)',
+    'Storage : write contacts storage (S)',
+    'Storage : read calendar storage (S)',
+    'Storage : write calendar storage (S)',
+    'Storage : read call log storage (S)',
+    'Storage : write call log storage (S)',
+    'Storage : read voicemail storage (S)',
+    'Storage : write voicemail storage (S)',
+    'Storage : read browser history storage (S)',
+    'Storage : write browser history storage (S)',
+    'Storage : read user dictionary storage (S)',
+    'Storage : write user dictionary storage (S)',
+    'Storage : read system settings storage (S)',
+    'Storage : write system settings storage (S)',
+    'Storage : read secure settings storage (S)',
+    'Storage : write secure settings storage (S)',
+    'Storage : read Gservices settings storage (S)',
+    'Storage : write Gservices settings storage (S)',
+    'Storage : read sync settings storage (S)',
+    'Storage : write sync settings storage (S)',
+    'Storage : read sync stats storage (S)',
+    'Storage : write sync stats storage (S)',
+    'Storage : read account storage (S)',
+    'Storage : write account storage (S)',
+    'Storage : read app data (S)',
+    'Storage : write app data (S)',
+    'Storage : read app data usage (S)',
+    'Storage : write app data usage (S)',
+    'Storage : read app data cache (S)',
+    'Storage : write app data cache (S)',
+    'Storage : read app data files (S)',
+    'Storage : write app data files (S)',
+    'Storage : read app data databases (S)',
+    'Storage : write app data databases (S)',
+    'Storage : read app data shared prefs (S)',
+    'Storage : write app data shared prefs (S)',
+    'Storage : read app data backup (S)',
+    'Storage : write app data backup (S)',
+    'Storage : read app data external (S)',
+    'Storage : write app data external (S)',
+    'Storage : read app data external cache (S)',
+    'Storage : write app data external cache (S)',
+    'Storage : read app data external files (S)',
+    'Storage : write app data external files (S)',
+    'Storage : read app data external media (S)',
+    'Storage : write app data external media (S)',
+    'Storage : read app data external obb (S)',
+    'Storage : write app data external obb (S)',
+    'Storage : read app data external shared prefs (S)',
+    'Storage : write app data external shared prefs (S)',
+    'Storage : read app data external backup (S)',
+    'Storage : write app data external backup (S)',
+    'Your personal information : read calendar events (D)',
+    'Your personal information : read contact data (D)',
+    'Your personal information : read sensitive log data (D)',
+    'Your personal information : read user defined dictionary (D)',
+    'Your personal information : retrieve system internal state (S)',
+    'Your personal information : set alarm in alarm clock (S)',
+    "Your personal information : write Browser's history and bookmarks (D)",
+    'Your personal information : write contact data (D)',
+    'Your personal information : write to user defined dictionary (S)'
+]
+
+class PredictMalware(APIView):
+    def post(self, request):
+        # Load the model
+        model = joblib.load('xgboost_model.joblib')
+        
+        # Get the input data from the request
+        data = request.data.get('features')
+        
+        # Check if data is valid
+        if data is None or not isinstance(data, list) or len(data) != 173:
+            return Response({'error': 'Invalid input data. Expected a list of 173 features.'}, status=400)
+            
+        # Create a pandas DataFrame from the input data
+        df = pd.DataFrame([data])
+        
+        # Make prediction
+        prediction = model.predict(df)
+        
+        # Return the prediction
+        return Response({'prediction': prediction[0]})
+
+class UploadApk(APIView):
+    parser_classes = [FileUploadParser]
+
+    def put(self, request, filename=None, format=None):
+        if 'file' not in request.data:
+            return Response({'error': 'No file uploaded.'}, status=400)
+
+        file_obj = request.data['file']
+
+        # Save the uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".apk") as temp_file:
+            for chunk in file_obj.chunks():
+                temp_file.write(chunk)
+            temp_file_path = temp_file.name
+
+        try:
+            # Use androguard to parse the APK
+            apk = APK(temp_file_path)
+            extracted_permissions = apk.get_permissions()
+
+            # The extracted permissions from androguard are typically in the format 'android.permission.INTERNET'.
+            # Our model expects a 173-feature vector based on descriptive permission names.
+            # A mapping is needed to convert these raw permissions into the model's input format.
+            # For now, we return the raw permissions. The client should handle the mapping.
+            return Response({'extracted_permissions': extracted_permissions}, status=200)
+
+        except Exception as e:
+            return Response({'error': f'Error processing APK: {str(e)}'}, status=500)
+        finally:
+            # Clean up the temporary file
+            os.remove(temp_file_path)
